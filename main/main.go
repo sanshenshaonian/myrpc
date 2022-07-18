@@ -1,12 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"geerpc"
-	"geerpc/codec"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -23,29 +22,28 @@ func StartServer(addr chan string) {
 }
 
 func main() {
+	log.SetFlags(0)
 	var addr = make(chan string)
-
 	go StartServer(addr) //给服务端单开一个go程
 
-	conn, _ := net.Dial("tcp", <-addr) //客户端连接 tcp
-	defer func() { conn.Close() }()
+	client, _ := geerpc.Dial("tcp", <-addr) //客户端连接 tcp
+	defer func() { _ = client.Close() }()
 
 	time.Sleep(time.Second)
 
-	_ = json.NewEncoder(conn).Encode(geerpc.DefaultOptions) //给option消息编码 使用json编码规则
-	cc := codec.NewGobCodec(conn)                           //初始化一个gob编解码器
-
+	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
-		h := &codec.Header{
-			ServiceMethod: "foo.sum",
-			Seq:           uint64(i),
-		}
-		//发送编码后文件
-		_ = cc.Write(h, fmt.Sprintf("geerpc req %d", h.Seq))
+		wg.Add(1)
 
-		var reply string
-		_ = cc.ReadHeader(h)
-		_ = cc.ReadBody(&reply)
-		log.Println("reply:", reply)
+		go func(i int) {
+			defer wg.Done()
+			args := fmt.Sprintf("geerpc req %d", i)
+			var reply string
+			if err := client.Call("foo.sum", args, &reply); err != nil {
+				log.Fatal("call foo.sum error", err)
+			}
+			log.Println("reply", reply)
+		}(i)
 	}
+	wg.Wait()
 }
