@@ -37,11 +37,13 @@ func (c *GobCodec) ReadBody(body interface{}) error {
 
 func (c *GobCodec) Write(h *Header, body interface{}) (err error) {
 	defer func() {
-		_ = c.buf.Flush()
+		_ = c.buf.Flush() //bufio 通过flush（）将缓冲写入真实的文件
 		if err != nil {
 			c.Close()
 		}
 	}()
+	//将head和body编码，最后通过defer闭包flush流将编码信息发送
+	//在encodec中传入buf ，编码后的文件流存入buf中， 通过flush（）发送
 	if err := c.enc.Encode(h); err != nil {
 		log.Println("rpc codec: gob error encoding header:", err)
 		return err

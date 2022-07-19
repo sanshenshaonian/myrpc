@@ -34,6 +34,7 @@ type Call struct {
 
 var ErrShutdown = errors.New("connection is shut down")
 
+//
 func (call *Call) done() {
 	call.Done <- call
 }
@@ -60,6 +61,13 @@ func (client *Client) Close() error {
 	return client.cc.Close()
 }
 
+func (client *Client) IsAvailable() bool {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return !client.shutdown && !client.closing
+}
+
+//注册调用信息， 将call加入到pending map中
 func (client *Client) registerCall(call *Call) (uint64, error) {
 	client.mu.Lock()
 	defer client.mu.Unlock()
@@ -75,6 +83,7 @@ func (client *Client) registerCall(call *Call) (uint64, error) {
 	return call.Seq, nil
 }
 
+//删除已经处理完成的请求
 func (client *Client) removeCall(seq uint64) *Call {
 	client.mu.Lock()
 	defer client.mu.Unlock()
@@ -98,6 +107,7 @@ func (client *Client) terminateCalls(err error) {
 	}
 }
 
+//同server端 对消息头和消息体进行解码 并删除此次调用
 func (client *Client) receive() {
 	var err error
 	for err == nil {
@@ -125,6 +135,7 @@ func (client *Client) receive() {
 	client.terminateCalls(err)
 }
 
+//注册并发送调用
 func (client *Client) send(call *Call) {
 	client.sending.Lock()
 	defer client.sending.Unlock()
@@ -149,6 +160,7 @@ func (client *Client) send(call *Call) {
 	}
 }
 
+//异步发送，不阻塞
 func (client *Client) Go(serviceMethod string, args, reply interface{}, done chan *Call) *Call {
 	if done == nil {
 		done = make(chan *Call, 10)
@@ -167,6 +179,7 @@ func (client *Client) Go(serviceMethod string, args, reply interface{}, done cha
 	return call
 }
 
+//当有call.done（）被调用时才会执行，否则阻塞
 func (client *Client) Call(serviceMethod string, args, reply interface{}) error {
 	call := <-client.Go(serviceMethod, args, reply, make(chan *Call, 1)).Done
 	return call.Error
