@@ -46,10 +46,10 @@ func (m *methodType) newReplyv() reflect.Value {
 }
 
 type service struct {
-	name   string
-	typ    reflect.Type
-	rcvr   reflect.Value
-	method map[string]*methodType
+	name   string                 //映射的结构体名称
+	typ    reflect.Type           //结构体类型
+	rcvr   reflect.Value          //结构体本身
+	method map[string]*methodType //存储结构体所有方法
 }
 
 func newService(rcvr interface{}) *service {
