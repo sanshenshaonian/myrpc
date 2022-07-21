@@ -227,7 +227,7 @@ func newClientCodec(cc codec.Codec, opt *Option) *Client {
 }
 
 func parseOptions(opts ...*Option) (*Option, error) {
-	if len(opts) == 0 || opts == nil {
+	if len(opts) == 0 || opts[0] == nil {
 		return DefaultOptions, nil
 	}
 
