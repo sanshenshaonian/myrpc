@@ -7,35 +7,35 @@ import (
 	"sync/atomic"
 )
 
+//方法类型类
 type methodType struct {
 	method    reflect.Method //方法本身
 	ArgType   reflect.Type   //第一个参数类型
 	ReplyType reflect.Type   //第二个参数类型
-	numCalls  uint64         //统计调用数量用
+	numCalls  uint64         //调用次数
 }
 
-//返回方法调用数量
+//原子方法返回numCalls
 func (m *methodType) NumCalls() uint64 {
 	return atomic.LoadUint64(&m.numCalls)
 }
 
-//创建对应类型实例
+//创建一个argv实例
 func (m *methodType) newArgv() reflect.Value {
 	var argv reflect.Value
-
+	// arg may be a pointer type, or a value type
 	if m.ArgType.Kind() == reflect.Ptr {
 		argv = reflect.New(m.ArgType.Elem())
 	} else {
 		argv = reflect.New(m.ArgType).Elem()
 	}
-
 	return argv
 }
 
-//创建对应类型实例
+//创建一个replyv实例
 func (m *methodType) newReplyv() reflect.Value {
-	var replyv reflect.Value
-	replyv = reflect.New(m.ReplyType.Elem())
+	// reply must be a pointer type
+	replyv := reflect.New(m.ReplyType.Elem())
 	switch m.ReplyType.Elem().Kind() {
 	case reflect.Map:
 		replyv.Elem().Set(reflect.MakeMap(m.ReplyType.Elem()))
@@ -45,35 +45,34 @@ func (m *methodType) newReplyv() reflect.Value {
 	return replyv
 }
 
+//服务类
 type service struct {
-	name   string                 //映射的结构体名称
-	typ    reflect.Type           //结构体类型
-	rcvr   reflect.Value          //结构体本身
-	method map[string]*methodType //存储结构体所有方法
+	name   string                 //映射的结构体的名称
+	typ    reflect.Type           //结构体的类型
+	rcvr   reflect.Value          //结构体实例本身
+	method map[string]*methodType //存储结构体所有符合条件的方法
 }
 
+//实例化一个服务类
 func newService(rcvr interface{}) *service {
+	//实例化一个service
 	s := new(service)
 	s.rcvr = reflect.ValueOf(rcvr)
 	s.name = reflect.Indirect(s.rcvr).Type().Name()
 	s.typ = reflect.TypeOf(rcvr)
-
 	if !ast.IsExported(s.name) {
-		log.Fatalf("rpc server : %s is not a vaild service name", s.name)
+		log.Fatalf("rpc server: %s is not a valid service name", s.name)
 	}
+	//注册服务
 	s.registerMethods()
 	return s
 }
 
 func (s *service) registerMethods() {
 	s.method = make(map[string]*methodType)
-
 	for i := 0; i < s.typ.NumMethod(); i++ {
 		method := s.typ.Method(i)
 		mType := method.Type
-
-		//第一个if判断函数输入参数是否为三个，第一个参数为隐藏参数this， arg和 reply 所以有三个输入参数。 判断输出参数是否为一个 返回err
-		//第二个if判断返回参数是否为error类型
 		if mType.NumIn() != 3 || mType.NumOut() != 1 {
 			continue
 		}
@@ -84,21 +83,16 @@ func (s *service) registerMethods() {
 		if !isExportedOrBuiltinType(argType) || !isExportedOrBuiltinType(replyType) {
 			continue
 		}
-
 		s.method[method.Name] = &methodType{
 			method:    method,
 			ArgType:   argType,
 			ReplyType: replyType,
 		}
-
 		log.Printf("rpc server: register %s.%s\n", s.name, method.Name)
 	}
 }
 
-func isExportedOrBuiltinType(t reflect.Type) bool {
-	return ast.IsExported(t.Name()) || t.PkgPath() == ""
-}
-
+//通过reflect.value.Call([]reflect.value 实现对于service.method的调用
 func (s *service) call(m *methodType, argv, replyv reflect.Value) error {
 	atomic.AddUint64(&m.numCalls, 1)
 	f := m.method.Func
@@ -107,4 +101,8 @@ func (s *service) call(m *methodType, argv, replyv reflect.Value) error {
 		return errInter.(error)
 	}
 	return nil
+}
+
+func isExportedOrBuiltinType(t reflect.Type) bool {
+	return ast.IsExported(t.Name()) || t.PkgPath() == ""
 }
